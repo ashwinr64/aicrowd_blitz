@@ -1,3 +1,4 @@
 # skely
 
-Contains all the code for skely problem.
+Credits:
+ * We borrow code from WTFML library for the training script

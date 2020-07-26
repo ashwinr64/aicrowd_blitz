@@ -1,6 +1,4 @@
 import pretrainedmodels
-from efficientnet.model import EfficientNet
-
 from tqdm import tqdm
 import random
 from PIL import Image, ImageFile, ImageOps, ImageEnhance
@@ -16,9 +14,6 @@ from sklearn import metrics
 import time
 import sys
 import gc
-
-import wandb
-wandb.init(project="skely")
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -154,7 +149,6 @@ class Engine:
 
             if not use_tpu:
                 with torch.set_grad_enabled(True):
-                    # print(loss)
                     if fp16:
                         with amp.scale_loss(loss, optimizer) as scaled_loss:
                             scaled_loss.backward()
@@ -174,8 +168,6 @@ class Engine:
                 if b_idx > 0:
                     optimizer.zero_grad()
 
-            wandb.log({'train_loss': loss.item(), 'batch': b_idx}, step=epoch)
-
             losses.update(loss.item(), data_loader.batch_size)
             tk0.set_postfix(loss=losses.avg)
 
@@ -192,9 +184,6 @@ class Engine:
                 for key, value in data.items():
                     data[key] = value.to(device)
                 predictions, loss = model(**data)
-
-                wandb.log({'valid_loss': loss.item(),
-                           'batch': b_idx}, step=epoch)
 
                 predictions = predictions.cpu()
                 losses.update(loss.item(), data_loader.batch_size)
@@ -331,6 +320,8 @@ def train(fold):
     train_aug = albumentations.Compose(
         [
             albumentations.Resize(size, size),
+            albumentations.Cutout(
+                num_holes=5, max_h_size=30, max_w_size=30, fill_value=255, always_apply=False, p=0.5),
             albumentations.Normalize(),
         ])
 
@@ -378,35 +369,11 @@ def train(fold):
         num_workers=4
     )
 
-    # model = EfficientNet.from_pretrained('efficientnet-b0',
-    #                                      num_classes=1
-    #                                      )
-
-    # model._fc = nn.Sequential(
-    #     nn.Linear(1280, 640),
-    #     nn.ReLU(inplace=True),
-    #     nn.BatchNorm1d(640),
-    #     nn.Dropout(p=0.5),
-    #     nn.Linear(640, 1)
-    # )
-
     model = ResNet18()
-    # model = ResNet50()
-
-    # for name, param in model.named_parameters(recurse=True):
-    #     if 'bn' in name or 'out' in name:
-    #         print('Unfreezed', name)
-    #         param.requires_grad = True
-    #     else:
-    #         print('Freezed', name)
-    #         param.requires_grad = False
 
     print(model)
-    # exit(0)
 
     model.to(device)
-
-    wandb.watch(model)
 
     optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)
@@ -416,26 +383,11 @@ def train(fold):
         mode='min'
     )
 
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     optimizer, max_lr=0.01, steps_per_epoch=len(train_loader), epochs=epochs)
-
     # Initialization
     if fp16:
         opt_level = 'O1'
         model, optimizer = amp.initialize(
             model, optimizer, opt_level=opt_level)
-
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     max_lr=(1e-6)*train_bs,
-    #     epochs=epochs,
-    #     optimizer=optimizer,
-    #     steps_per_epoch=int(len(train_loader) / train_bs),
-    #     pct_start=0.1,
-    #     div_factor=20,
-    #     final_div_factor=100,
-    #     base_momentum=0.90,
-    #     max_momentum=0.95,
-    # )
 
     es = EarlyStopping(patience=5, mode='min')
 
@@ -464,19 +416,14 @@ def train(fold):
         # For ReduceLROnPlateau
         scheduler.step(valid_loss)
 
-        # For OneCycleLR
-        # scheduler.step()
-
         print(
             f'epoch: {epoch}, train_loss: {training_loss}, valid_loss: {valid_loss}')
 
         if fp16:
-            # es(auc, model, epoch, optimizer,
-            #    model_path=os.path.join(wandb.run.dir, 'model.tar'), amp)
             pass
         else:
             es(valid_loss, model, epoch, optimizer,
-               model_path=os.path.join(wandb.run.dir, 'model.tar'))
+               model_path=os.path.join('models', 'model.tar'))
 
         if es.early_stop:
             print('Early Stopping')

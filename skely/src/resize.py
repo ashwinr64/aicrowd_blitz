@@ -6,17 +6,8 @@ from joblib import Parallel, delayed
 import cv2
 import numpy as np
 
-
-# Square Resize
-def resize_image(image_path, output_path, size):
-    base_name = os.path.basename(image_path)
-    output = os.path.join(output_path, base_name)
-
-    Image.open(image_path).convert('RGBA').resize(size).save(output)
-
-
-# Set black bg
-def black_bg(image_path, output_path, size):
+# Set white bg
+def white_bg(image_path, output_path, size):
     base_name = os.path.basename(image_path)
     output = os.path.join(output_path, base_name)
 
@@ -34,9 +25,7 @@ def black_bg(image_path, output_path, size):
     # Convert to RGB
     img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
 
-    img = cv2.resize(img, size,
-                     #  interpolation=cv2.INTER_AREA
-                     )
+    img = cv2.resize(img, size)
 
     # Save
     cv2.imwrite(output, img)
@@ -48,7 +37,7 @@ output_path = '../data/training_masked/'
 images = glob.glob(os.path.join(image_path, '*'))
 
 Parallel(n_jobs=12)(
-    delayed(black_bg)(
+    delayed(white_bg)(
         i,
         output_path,
         size
